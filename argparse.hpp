@@ -31,7 +31,7 @@ namespace arg {
     using ref = std::reference_wrapper<T>;
     
     template<class T>
-    using pairValInit = std::pair<arg::ref<T>,arg::ref<bool>>; // Contain the value and the initialized status of the arg of the option
+    using pairValInit = std::pair<arg::ref<T>,bool&>; // Contain the value and the initialized status of the arg of the option
 
     using var = std::variant<
         bool,
@@ -128,7 +128,7 @@ namespace arg {
             
             if(as_default_Val)
                 val = opt.value();
-            else if (std::is_same<bool,T>::value) { // init bool opt value if no value is set;
+            else if (std::is_same<bool,T>::value) { // is not set, bool option alway have a default value of false
                 val = false;
                 as_default_Val = true;
             }
@@ -142,7 +142,7 @@ namespace arg {
             // Utiliser m_options.emplace_back() qui retourne une référence sur l'objet ajouté.
             auto& opt_ref = m_options.emplace_back(std::make_unique<ts_option>( ts_option{ts_ids{option_name,alias}, val, help, as_default_Val}));
 
-            pairValInit<T> op_val_ref = { std::ref(std::get<T>(opt_ref.get()->value)), std::ref<bool>(opt_ref.get()->initialized)};
+            pairValInit<T> op_val_ref = { std::ref(std::get<T>(opt_ref.get()->value)), opt_ref.get()->initialized};
             
             return op_val_ref;
         }
