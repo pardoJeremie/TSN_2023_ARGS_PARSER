@@ -65,8 +65,8 @@ namespace arg {
                         throw "is not 0 or 1!";
                     else if (std::is_unsigned<std::remove_reference_t<decltype(a)>>::value && b < 0) // reference is always signed, we must remove the reference
                         throw "is negative!";
-                    else if (true) //si la valeur est trop grande
-                        throw "is is to big!";
+                    else if (std::numeric_limits<std::remove_reference_t<decltype(a)>>::min() > b || std::numeric_limits<std::remove_reference_t<decltype(a)>>::max() < b) //si la valeur est trop grande ou trop petit
+                        throw "is to big for the variable size!";
                 
                     a = static_cast< std::remove_reference_t<decltype(a)>>(b); // remove the reference of var&
                     // remark: using the equivalent std::remove_reference<decltype(a)>::type create a "Missing 'typename' ... " error
@@ -164,17 +164,15 @@ namespace arg {
                 if(!std::regex_match(optName,std::regex("-[a-zA-Z]|--[a-zA-Z0-9]*")))
                     throw std::runtime_error("option name argument '" + optName + "' as the wrong format");
                 
-                if ("--help" == optName || "-h" == optName) {
-                    help();
-                    exit(0);// exit the program !!
-                }
+                if ("--help" == optName || "-h" == optName)
+                    help();// exit the program !!
                 
                 bool optset = false;
                 
                 for (auto & element : m_options) {
                     if ("--"+element.get()->ids.id == optName || element.get()->ids.alias == optName[1]) {
                         
-                        if(idx+1 >= argc || (argv[idx+1][0] == '-' && !std::regex_match(argv[idx+1],std::regex("-[0-9]*")))) {// no next argument or next argument is not a new option
+                        if(idx+1 >= argc || (argv[idx+1][0] == '-' && !std::regex_match(argv[idx+1],std::regex("-[0-9]*")))) {// no next argument or next argument is a new option
                             if (std::holds_alternative<bool>(element.get()->value))
                                 element.get()->value = !std::get<bool>(element.get()->value);// if variant is bool, inverse value. (remarque 1, std::get<bool>( ... ) should never throw. remarque 2, for bool variant, initialized always equal 'true')
                             else
@@ -230,6 +228,8 @@ namespace arg {
             }
             
             std::cout << ss.str() << std::endl;
+            
+            exit(0);// exit the program when help is called
         }
         
         /**
