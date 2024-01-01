@@ -57,16 +57,16 @@ namespace arg {
                 [&](auto& a){
                     std::string s = argv_str_value;
                     if(!std::any_of(s.begin(),s.end(),::isdigit))
-                        throw std::runtime_error("input value don't contain a digit!");
+                        throw "don't contain a digit!";
                     
                     auto b = strtol(argv_str_value,NULL,10);
                     
                     if (std::is_same<bool&,decltype(a)>::value && (b != 1 || b != 0)) // attention, all possible type of the variable 'a' are reference!
-                        throw std::runtime_error("input value is not 0 or 1!");
-                    else if (std::is_unsigned<decltype(a)>::value && b < 0)
-                        throw std::runtime_error("input value is negative!");
-                    else if (true) //si la valeur est trop grande !!!!
-                        throw std::runtime_error("input value is is to big!");
+                        throw "is not 0 or 1!";
+                    else if (std::is_unsigned<std::remove_reference_t<decltype(a)>>::value && b < 0) // reference is always signed, we must remove the reference
+                        throw "is negative!";
+                    else if (true) //si la valeur est trop grande
+                        throw "is is to big!";
                 
                     a = static_cast< std::remove_reference_t<decltype(a)>>(b); // remove the reference of var&
                     // remark: using the equivalent std::remove_reference<decltype(a)>::type create a "Missing 'typename' ... " error
@@ -88,17 +88,17 @@ namespace arg {
             return ss.str();
         }
     
-        std::string varType_to_string(const var& v) noexcept // typeid(decltype(a)).name() don't return a satifiable name
+        std::string varType_to_string(const var& v) noexcept // implemented because typeid(decltype(a)).name() don't return a satifiable name
         {
             std::string s;
         
             std::visit(overload {
-                [&](const bool& a){s="bool";},
-                [&](const int32_t& a){s="int32_t";},
-                [&](const uint32_t& a){s="uint32_t";},
-                [&](const int64_t& a){s="int64_t";},
-                [&](const uint64_t& a){s="uint64_t";},
-                [&](const std::string& a){s="string";}}, v);
+                [&](const bool& /*a*/){s="bool";},
+                [&](const int32_t& /*a*/){s="int32_t";},
+                [&](const uint32_t& /*a*/){s="uint32_t";},
+                [&](const int64_t& /*a*/){s="int64_t";},
+                [&](const uint64_t& /*a*/){s="uint64_t";},
+                [&](const std::string& /*a*/){s="string";}}, v);
         
             return s;
         }
@@ -128,7 +128,7 @@ namespace arg {
             
             if(as_default_Val)
                 val = opt.value();
-            else if (std::is_same<bool,T>::value) { // is not set, bool option alway have a default value of false
+            else if (std::is_same<bool,T>::value) { // if not set, bool option alway have a default value of false
                 val = false;
                 as_default_Val = true;
             }
@@ -139,22 +139,66 @@ namespace arg {
             std::string option_name = name;
             option_name.erase(0,2);
             
+            if(alias =='h' || option_name == "help")
+                throw std::runtime_error("alias or name already used for 'h,help'");
+            
             // Utiliser m_options.emplace_back() qui retourne une référence sur l'objet ajouté.
             auto& opt_ref = m_options.emplace_back(std::make_unique<ts_option>( ts_option{ts_ids{option_name,alias}, val, help, as_default_Val}));
 
             pairValInit<T> op_val_ref = { std::ref(std::get<T>(opt_ref.get()->value)), opt_ref.get()->initialized};
             
-            return op_val_ref;
+            return op_val_ref; // Remark, using a reference to variables in a unique_ptr is a bad idea. Possible bad acces memory crash
         }
 
         /**
          * Parse les arguments du programme (argv).
          */
-        void parse(int argc, const char *const *argv) // noexcept ou noexcept(false)
+        void parse(int argc, const char *const *argv) noexcept(false)
         {
             // Parcourir "m_options" pour mettre à jour les valeurs en fonction de "argv".
-            for(;false;) {
+            
+            size_t idx = 1; // argv[0] is the name of the program
+            while( idx < argc) {
+                std::string optName = argv[idx];
                 
+                if(!std::regex_match(optName,std::regex("-[a-zA-Z]|--[a-zA-Z0-9]*")))
+                    throw std::runtime_error("option name argument '" + optName + "' as the wrong format");
+                
+                if ("--help" == optName || "-h" == optName) {
+                    help();
+                    exit(0);// exit the program !!
+                }
+                
+                bool optset = false;
+                
+                for (auto & element : m_options) {
+                    if ("--"+element.get()->ids.id == optName || element.get()->ids.alias == optName[1]) {
+                        
+                        if(idx+1 >= argc || (argv[idx+1][0] == '-' && !std::regex_match(argv[idx+1],std::regex("-[0-9]*")))) {// no next argument or next argument is not a new option
+                            if (std::holds_alternative<bool>(element.get()->value))
+                                element.get()->value = !std::get<bool>(element.get()->value);// if variant is bool, inverse value. (remarque 1, std::get<bool>( ... ) should never throw. remarque 2, for bool variant, initialized always equal 'true')
+                            else
+                                throw std::runtime_error("option '" + optName + "' does not have an input value");
+                        }
+                        else { // next argument is the value to set
+                            try
+                            {
+                                details::convert(argv[++idx],element.get()->value); // index incremented here
+                                element.get()->initialized=true;
+                            }
+                            catch (const char * s)
+                            {
+                                throw std::runtime_error("option '" + optName + "' input value "+ s);
+                            }
+                        }
+                        optset = true;
+                        break;
+                    }
+                }
+                if (!optset) // if unknow option throw
+                    throw std::runtime_error("'" + optName + "'is a unknow option");
+
+                idx++;
             }
         }
 
@@ -166,7 +210,7 @@ namespace arg {
         }
 
         private:
-        
+
         /**
          * Affiche les options avec leurs valeurs par defaut.
          */
